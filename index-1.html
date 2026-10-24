@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>شغل اليوم</title>
+<style>
+:root{--bg:#F6F7FB;--card:#fff;--ink:#16203A;--mute:#69728A;--line:#E1E5EF;--main:#1B3A8C;--on:#fff;--gold:#F2B33D;--ok:#23845A}
+@media (prefers-color-scheme:dark){:root{--bg:#0E1424;--card:#172038;--ink:#EDF0F8;--mute:#9AA4BF;--line:#26314F;--main:#7C98F0;--on:#0E1424;--ok:#4CC38A}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:Tahoma,Arial,sans-serif;line-height:1.6}
+.app{max-width:480px;margin:0 auto;padding:16px 16px 40px}
+h1{color:var(--main);margin:8px 0 0;font-size:28px}
+.sub{color:var(--mute);margin:0 0 12px;font-size:14px}
+#st{font-size:13px;padding:8px 12px;border-radius:10px;background:var(--line);margin-bottom:12px}
+.form,.job{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
+label{display:block;font-weight:700;margin:10px 0 4px;font-size:14px}
+input,select{width:100%;font:inherit;padding:10px;border-radius:12px;border:1.5px solid var(--line);background:var(--card);color:var(--ink)}
+button{font:inherit;font-weight:700;border:0;border-radius:12px;padding:10px 18px;background:var(--main);color:var(--on);cursor:pointer}
+.form button{width:100%;margin-top:14px;padding:12px}
+.job h3{margin:0;font-size:17px}
+.meta{color:var(--mute);font-size:13px;margin:2px 0 10px}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.wage{font-weight:800;font-size:18px}
+.done{background:var(--ok);color:#fff}
+.sec{font-weight:800;margin:18px 0 10px}
+.empty{text-align:center;color:var(--mute);padding:20px}
+</style>
+</head>
+<body>
+<div class="app">
+  <h1>شغل اليوم</h1>
+  <p class="sub">أعمال يومية قريبة منك</p>
+  <div id="st">جارٍ الاتصال بقاعدة البيانات...</div>
+
+  <div class="form">
+    <label for="t">نوع العمل</label>
+    <select id="t"><option>خدمة المنازل</option><option>بناء</option><option>سباكة</option><option>كهرباء</option><option>نقل</option><option>تنظيف</option><option>بستنة</option><option>دهان</option></select>
+    <label for="sh">نوع الدوام</label>
+    <select id="sh"><option>نصف يوم</option><option>يوم كامل</option><option>إقامة في البيت</option></select>
+    <label for="gn">المطلوب</label>
+    <select id="gn"><option>عاملة</option><option>عامل</option><option>لا يهم</option></select>
+    <label for="d">وصف العمل</label>
+    <input id="d" placeholder="مثال: إصلاح باب خشبي">
+    <label for="c">المكان</label>
+    <input id="c" placeholder="مثال: نواكشوط · لكصر">
+    <label for="w">الأجر (أوقية)</label>
+    <input id="w" type="number" inputmode="numeric" placeholder="2000">
+    <label for="du">المدة</label>
+    <input id="du" placeholder="مثال: يوم واحد، 4 ساعات">
+    <label for="dt">تاريخ العمل</label>
+    <input id="dt" type="date">
+    <label for="wk">عدد العمال المطلوبين</label>
+    <input id="wk" type="number" inputmode="numeric" min="1" value="1">
+    <label for="ph">هاتف صاحب العمل</label>
+    <input id="ph" type="tel" inputmode="tel" placeholder="مثال: 22 00 00 00">
+    <button id="post">انشر العمل</button>
+  </div>
+
+  <div class="sec">الأعمال المتاحة</div>
+  <div id="list"></div>
+</div>
+
+<script type="module">
+import {initializeApp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-app.js";
+import {getFirestore,collection,addDoc,onSnapshot,query,orderBy,serverTimestamp} from "https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore.js";
+
+const app = initializeApp({
+  apiKey: "AIzaSyBvYJBw_JhlDMEsbBUWDhzznv7Rw4koW5c",
+  authDomain: "che9eleni.firebaseapp.com",
+  projectId: "che9eleni",
+  storageBucket: "che9eleni.firebasestorage.app",
+  messagingSenderId: "381497184456",
+  appId: "1:381497184456:web:a7483014d04e40cf9295fd"
+});
+const db = getFirestore(app);
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const applied = {};
+let jobs = [];
+
+function render(){
+  if(!jobs.length){ $('list').innerHTML = '<div class="empty">لا توجد أعمال بعد. انشر أول عمل من النموذج أعلاه.</div>'; return; }
+  $('list').innerHTML = jobs.map(j =>
+    '<div class="job"><h3>' + esc(j.description) + '</h3>' +
+    '<p class="meta">' + esc(j.trade) + ' · ' + esc(j.city) + '</p>' +
+    '<p class="meta">' + [j.shift, j.gender, j.duration, j.workDate, j.workers ? ('المطلوب: ' + j.workers) : '', j.phone ? ('هاتف: ' + j.phone) : ''].filter(Boolean).map(esc).join(' · ') + '</p>' +
+    '<div class="row"><div class="wage">' + esc(j.wage) + ' أوقية</div>' +
+    (applied[j.id] ? '<button class="done" disabled>تم التقديم</button>' : '<button data-id="' + j.id + '">قدّم الآن</button>') +
+    '</div></div>').join('');
+}
+
+onSnapshot(query(collection(db,'jobs'), orderBy('createdAt','desc')),
+  snap => {
+    jobs = snap.docs.map(d => ({id:d.id, ...d.data()}));
+    $('st').textContent = 'متصل بقاعدة البيانات ✓';
+    render();
+  },
+  err => { $('st').textContent = 'تعذّر الاتصال: ' + err.code; }
+);
+
+$('post').onclick = async () => {
+  const description = $('d').value.trim(), city = $('c').value.trim(), wage = Number($('w').value);
+  const duration = $('du').value.trim(), workDate = $('dt').value, workers = Number($('wk').value), phone = $('ph').value.trim();
+  if(!description || !city || !wage || !duration || !workDate || !workers || !phone){ alert('أكمل كل الخانات'); return; }
+  try{
+    await addDoc(collection(db,'jobs'), {trade:$('t').value, shift:$('sh').value, gender:$('gn').value, description, city, wage, duration, workDate, workers, phone, createdAt:serverTimestamp()});
+    ['d','c','w','du','dt','ph'].forEach(id => $(id).value = ''); $('wk').value = 1;
+  }catch(e){ alert('تعذّر النشر: ' + e.code); }
+};
+
+$('list').onclick = async e => {
+  const id = e.target.dataset && e.target.dataset.id;
+  if(!id) return;
+  const name = prompt('اسمك:'); if(!name) return;
+  const phone = prompt('رقم هاتفك:'); if(!phone) return;
+  try{
+    await addDoc(collection(db,'applications'), {jobId:id, name:name.trim(), phone:phone.trim(), status:'pending', createdAt:serverTimestamp()});
+    applied[id] = true; render();
+  }catch(err){ alert('تعذّر التقديم: ' + err.code); }
+};
+</script>
+</body>
+</html>
